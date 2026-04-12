@@ -2,113 +2,146 @@ import streamlit as st
 from openai import OpenAI
 
 # ── 页面配置 ──────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="AI PRD 生成器 (Agent版)", page_icon="🚀", layout="wide")
+st.set_page_config(page_title="AI PRD Pro Agent", page_icon="🎨", layout="wide")
 
-# ── 初始化 Session State (实现记忆管理和多步交互的核心) ─────────────────────
-# 这就是你向面试官吹牛的资本：“我用状态机管理了 Agent 的生命周期”
+# ── 预设服务商配置（自动联动 Base URL） ──────────────────────────────────────────
+PROVIDERS = {
+    "DeepSeek (推荐)": {
+        "base_url": "https://api.deepseek.com/v1",
+        "models": ["deepseek-chat", "deepseek-coder"]
+    },
+    "OpenAI (Global)": {
+        "base_url": "https://api.openai.com/v1",
+        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
+    },
+    "Kimi (Moonshot)": {
+        "base_url": "https://api.moonshot.cn/v1",
+        "models": ["moonshot-v1-8k", "moonshot-v1-32k"]
+    },
+    "智谱 AI (GLM)": {
+        "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+        "models": ["glm-4", "glm-4-flash"]
+    }
+}
+
+# ── 初始化 Session State ──────────────────────────────────────────────────────
 if 'stage' not in st.session_state:
-    st.session_state.stage = 1  # 阶段1：输入想法，阶段2：修改大纲，阶段3：展示最终PRD
-if 'outline_data' not in st.session_state:
-    st.session_state.outline_data = ""
+    st.session_state.stage = "IDEATION" # 阶段：IDEATION, REVIEW, FINAL
+if 'blueprint' not in st.session_state:
+    st.session_state.blueprint = ""
 if 'final_prd' not in st.session_state:
     st.session_state.final_prd = ""
 if 'user_idea' not in st.session_state:
     st.session_state.user_idea = ""
 
+# ── 样式注入（极致暗黑/专业排版） ───────────────────────────────────────────────
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@300;500;700&display=swap');
+
+.stApp { background: #0a0c10; color: #d1d5db; font-family: 'Noto Sans SC', sans-serif; }
+[data-testid="stSidebar"] { background: #11141b !important; border-right: 1px solid #1f2937; }
+
+/* 标题美化 */
+.main-title { font-size: 2.2rem; font-weight: 800; background: linear-gradient(90deg, #3b82f6, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 0.5rem; }
+.sub-tag { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #6b7280; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 2rem; }
+
+/* 流程进度条 */
+.step-bar { display: flex; gap: 10px; margin-bottom: 2rem; }
+.step { flex: 1; height: 4px; border-radius: 2px; }
+.step-active { background: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+.step-inactive { background: #374151; }
+
+/* 内容卡片 */
+.glass-card { background: rgba(17, 24, 39, 0.7); border: 1px solid #1f2937; border-radius: 12px; padding: 2rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+
+/* 按钮自定义 */
+.stButton > button { border-radius: 8px !important; background: #3b82f6 !important; color: white !important; font-weight: 600 !important; border: none !important; transition: all 0.2s; }
+.stButton > button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59,130,246,0.3); }
+</style>
+""", unsafe_allow_html=True)
+
 # ── 侧边栏配置 ────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### ⚙️ Agent 配置")
-    api_key = st.text_input("API Key", type="password", placeholder="sk-...")
-    base_url = st.text_input("Base URL", value="https://api.openai.com/v1")
-    selected_model = st.selectbox("模型", ["deepseek-chat", "gpt-4o", "moonshot-v1-8k"])
+    st.markdown("### 🛠️ 工作流引擎配置")
     
-    # 增加一个重置按钮
-    if st.button("🔄 重置当前任务"):
-        st.session_state.stage = 1
-        st.session_state.outline_data = ""
+    provider_name = st.selectbox("选择 AI 服务商", options=list(PROVIDERS.keys()))
+    selected_provider = PROVIDERS[provider_name]
+    
+    api_key = st.text_input("API Access Key", type="password", placeholder="填入 sk-...")
+    base_url = st.text_input("Base URL", value=selected_provider["base_url"])
+    model = st.selectbox("核心模型节点", options=selected_provider["models"])
+    
+    st.markdown("---")
+    if st.button("🔄 开启新任务"):
+        st.session_state.stage = "IDEATION"
+        st.session_state.blueprint = ""
         st.session_state.final_prd = ""
-        st.session_state.user_idea = ""
         st.rerun()
 
-# ── 主界面逻辑 ────────────────────────────────────────────────────────────────
-st.title("🚀 AI-PM Agent: 人机协同 PRD 引擎")
-st.markdown("`架构：规划器 (Planner) -> 人类确认 (Human-in-the-loop) -> 执行器 (Executor)`")
+# ── 顶层导航 ──────────────────────────────────────────────────────────────────
+st.markdown('<div class="main-title">AI-PM PRO AGENT</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-tag">Architecture-First PRD Engine v3.0</div>', unsafe_allow_html=True)
 
-# 实例化客户端的辅助函数
+# 绘制进度条
+s1, s2, s3 = ("step-active", "step-inactive", "step-inactive")
+if st.session_state.stage == "REVIEW": s1, s2 = "step-active", "step-active"
+if st.session_state.stage == "FINAL": s1, s2, s3 = "step-active", "step-active", "step-active"
+st.markdown(f'<div class="step-bar"><div class="step {s1}"></div><div class="step {s2}"></div><div class="step {s3}"></div></div>', unsafe_allow_html=True)
+
 def get_client():
-    if not api_key:
-        st.warning("⚠️ 请先在侧边栏输入 API Key")
-        st.stop()
-    return OpenAI(api_key=api_key.strip(), base_url=base_url.strip() if base_url else None)
+    if not api_key: st.warning("请先配置 API Key"); st.stop()
+    return OpenAI(api_key=api_key, base_url=base_url)
 
-# ==================== 阶段 1：用户输入与大纲规划 ====================
-if st.session_state.stage == 1:
-    st.info("📍 **Step 1: 需求输入**")
-    idea = st.text_area("请输入你的一句话产品想法：", placeholder="例如：我想做一个帮大学生改简历的 AI 工具")
-    
-    if st.button("⚡ 第一步：让 Agent 生成 PRD 结构大纲 (Planner)"):
-        if idea:
-            st.session_state.user_idea = idea
-            client = get_client()
-            with st.spinner("Agent 规划器正在拆解需求..."):
-                response = client.chat.completions.create(
-                    model=selected_model,
-                    messages=[
-                        {"role": "system", "content": "你是一个资深产品总监。请根据用户的想法，仅仅输出一个 PRD 的目录大纲和核心功能列表。不要写详细内容，只需骨架。"},
-                        {"role": "user", "content": idea}
-                    ]
-                )
-                st.session_state.outline_data = response.choices[0].message.content
-                st.session_state.stage = 2
-                st.rerun()
+# ── 阶段 1：灵感捕获与架构规划 ─────────────────────────────────────────────────
+if st.session_state.stage == "IDEATION":
+    with st.container():
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("#### 💡 需求原点")
+        idea = st.text_area("在此输入您的产品构想或核心痛点：", height=150, placeholder="例如：一个为独立开发者设计的、集成 AI 代码审查功能的透明桌面看板...")
+        
+        if st.button("开始架构规划 (Run Planner)"):
+            if idea:
+                st.session_state.user_idea = idea
+                client = get_client()
+                with st.spinner("AI Agent 正在进行多维度需求拆解..."):
+                    resp = client.chat.completions.create(
+                        model=model,
+                        messages=[{"role": "system", "content": "你是一个资深产品专家。请将用户模糊的需求转化为一份专业的 PRD 架构大纲，包含核心模块、业务流程逻辑和技术选型。"},
+                                  {"role": "user", "content": idea}]
+                    )
+                    st.session_state.blueprint = resp.choices[0].message.content
+                    st.session_state.stage = "REVIEW"
+                    st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# ==================== 阶段 2：人类干预与确认 ====================
-elif st.session_state.stage == 2:
-    st.warning("📍 **Step 2: 人类干预 (Human-in-the-loop)** - 请确认或修改 Agent 生成的大纲")
-    st.markdown("为了防止生成结果失控，请你在生成完整文档前，先审阅并修改下方的大纲：")
+# ── 阶段 2：产品经理架构审阅 ─────────────────────────────────────────────────
+elif st.session_state.stage == "REVIEW":
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("#### 🏗️ 架构蓝图审阅")
+    st.markdown("AI 已经为您规划了初步架构。请进行专业审阅并根据实际业务逻辑进行微调：")
     
-    # 让用户可以修改大纲
-    edited_outline = st.text_area("✍️ 审阅并编辑大纲：", value=st.session_state.outline_data, height=300)
+    edited_blueprint = st.text_area("编辑架构蓝图：", value=st.session_state.blueprint, height=350)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ 第二步：确认大纲，生成完整 PRD (Executor)"):
-            # 保存用户修改后的大纲，并进入下一步
-            st.session_state.outline_data = edited_outline
-            st.session_state.stage = 3
-            st.rerun()
-    with col2:
-         if st.button("退回上一步"):
-             st.session_state.stage = 1
-             st.rerun()
+    if st.button("确认架构并填充内容 (Generate PRD)"):
+        st.session_state.blueprint = edited_blueprint
+        st.session_state.stage = "FINAL"
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ==================== 阶段 3：执行生成与结果展示 ====================
-elif st.session_state.stage == 3:
-    st.success("📍 **Step 3: 完整 PRD 生成结果**")
-    
+# ── 阶段 3：最终 PRD 交付 ────────────────────────────────────────────────────
+elif st.session_state.stage == "FINAL":
     if not st.session_state.final_prd:
         client = get_client()
-        
-        # 核心：将原始想法和修改后的大纲一起发给模型（这就是短期记忆管理！）
-        system_prompt = """你是一个在腾讯/字节拥有5年经验的高级PM。
-        请根据用户提供的【原始想法】和【确认后的大纲】，严格按照大纲结构，扩写出一份丰满、专业的 PRD。
-        必须包含：用户故事(User Story)、验收标准(Acceptance Criteria) 和 数据埋点指标。"""
-        
-        user_prompt = f"【原始想法】：{st.session_state.user_idea}\n\n【确认后的大纲】：\n{st.session_state.outline_data}"
-        
-        with st.spinner("Agent 执行器正在根据你的大纲全力撰写细节..."):
-            response = client.chat.completions.create(
-                model=selected_model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ]
+        with st.spinner("正在根据确认的架构进行全文填充与逻辑闭环..."):
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": "你是一个拥有腾讯/字节大厂经验的资深PM。请根据确认的架构蓝图，扩写成一份完整、专业、具备数据埋点和验收标准的 PRD。"},
+                          {"role": "user", "content": f"原始需求：{st.session_state.user_idea}\n确认架构：{st.session_state.blueprint}"}]
             )
-            st.session_state.final_prd = response.choices[0].message.content
+            st.session_state.final_prd = resp.choices[0].message.content
             st.rerun()
             
-    # 展示最终结果
-    st.markdown("### 📄 最终产品需求文档")
+    st.markdown("#### ✅ 最终交付：产品需求文档 (PRD)")
     st.markdown(st.session_state.final_prd)
-    
-    st.download_button("📥 下载 Markdown 格式文档", data=st.session_state.final_prd, file_name="Agent_PRD.md")
+    st.download_button("📥 导出 Markdown 文档", data=st.session_state.final_prd, file_name="Product_PRD.md")
