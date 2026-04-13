@@ -6,12 +6,36 @@ import re
 # ── 页面配置 ──────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="AI-PM 工作流", page_icon="⚡", layout="wide")
 
-# ── 预设服务商配置 ────────────────────────────────────────────────────────────
+# ── 预设服务商配置 (全面涵盖市面最强模型) ─────────────────────────────────────────
 PROVIDERS = {
-    "DeepSeek (推荐)": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
-    "Kimi (月之暗面)": {"base_url": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k"},
-    "OpenAI (Global)": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
-    "智谱 AI (GLM)": {"base_url": "https://open.bigmodel.cn/api/paas/v4/", "model": "glm-4"}
+    "DeepSeek (深度求索 - 推荐)": {
+        "base_url": "https://api.deepseek.com/v1", 
+        "model": "deepseek-chat"
+    },
+    "Claude 3.5 Sonnet (需通过 OpenRouter)": {
+        "base_url": "https://openrouter.ai/api/v1", 
+        "model": "anthropic/claude-3.5-sonnet"
+    },
+    "Gemini 1.5 Pro (Google)": {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", 
+        "model": "gemini-1.5-pro"
+    },
+    "Qwen (通义千问 Max)": {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", 
+        "model": "qwen-max"
+    },
+    "Kimi (月之暗面)": {
+        "base_url": "https://api.moonshot.cn/v1", 
+        "model": "moonshot-v1-8k"
+    },
+    "OpenAI (ChatGPT 4o)": {
+        "base_url": "https://api.openai.com/v1", 
+        "model": "gpt-4o"
+    },
+    "GLM (智谱 AI)": {
+        "base_url": "https://open.bigmodel.cn/api/paas/v4/", 
+        "model": "glm-4"
+    }
 }
 
 # ── 初始化 Session State ──────────────────────────────────────────────────────
@@ -75,7 +99,7 @@ html, body, [class*="css"] {
 </style>
 """, unsafe_allow_html=True)
 
-# ── Mermaid 渲染组件 ──────────────────────────────────────────────────────────
+# ── 核心组件：Mermaid 渲染器 ──────────────────────────────────────────────────
 def render_mermaid(code: str):
     """在 Streamlit 中渲染 Mermaid 图表"""
     components.html(
@@ -92,7 +116,7 @@ def render_mermaid(code: str):
     )
 
 def extract_mermaid(text: str) -> str:
-    """用正则提取 Markdown 中的 Mermaid 代码块"""
+    """提取大模型输出中的 Mermaid 代码块"""
     match = re.search(r'```mermaid\n(.*?)\n```', text, re.DOTALL)
     return match.group(1).strip() if match else text.strip()
 
@@ -182,60 +206,74 @@ elif st.session_state.stage == "REVIEW":
                 st.session_state.stage = "IDEATION"
                 st.rerun()
 
-# 【阶段 3：最终交付 (Multi-Agent Simulation)】
+# 【阶段 3：最终交付 (极速流式 + 后台 Agent 协作)】
 elif st.session_state.stage == "FINAL":
     if not st.session_state.final_prd:
         client = get_client()
         
-        # 极客风格的状态展示面板
-        with st.status("🤖 Multi-Agent 协作网络已启动，正在编排任务...", expanded=True) as status:
+        # 1. 主 PRD 流式输出 (打字机效果) - 消除感知延迟
+        st.markdown("#### 📄 产品需求文档 (PRD) - 正在实时生成中...")
+        prd_container = st.container(border=True)
+        prd_placeholder = prd_container.empty()
+        
+        base_prd = ""
+        # 强约束的 System Prompt：确保 AI 绝对尊重用户的修改，不乱合并不乱删
+        system_prompt = """你是腾讯/字节的高级产品经理。
+        请根据用户的【原始需求】和【架构蓝图】，输出专业极简的 PRD。
+        【最高指令】：你必须绝对、严格地保留【架构蓝图】中所有的原标题、编号和章节结构！绝不允许擅自合并、删除或重组用户的原有章节！
+        你的任务仅仅是在用户给定的骨架下“填充血肉”（包含：业务背景、用户故事、交互说明等细节）。
+        如果用户在蓝图末尾或中间加了零散的短句，请自动将其转化为一个独立的新章节并为其填充专业内容，但绝不能破坏其他已有章节的结构。"""
+        
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": system_prompt},
+                      {"role": "user", "content": f"需求：{st.session_state.user_idea}\n蓝图：{st.session_state.blueprint}"}],
+            stream=True 
+        )
+        
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                base_prd += chunk.choices[0].delta.content
+                prd_placeholder.markdown(base_prd + " ▌")
+        prd_placeholder.markdown(base_prd)
+        
+        # 2. 启动后台附属 Agent 团队 (采用全平台兼容 Emoji)
+        with st.status("✅ 主 PRD 已完成！附属 Agent 团队正在进行高阶扩展...", expanded=True) as status:
             
-            # Agent A: 基础 PRD 生成
-            st.write("🕵️‍♂️ Agent A (产品执行官) 正在起草核心 PRD...")
-            resp_a = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": "你是高级产品经理。请根据【原始需求】和【架构蓝图】，输出专业极简的 PRD。包含：业务背景、用户故事、交互说明。"},
-                          {"role": "user", "content": f"需求：{st.session_state.user_idea}\n蓝图：{st.session_state.blueprint}"}]
-            )
-            base_prd = resp_a.choices[0].message.content
-            
-            # Agent B: QA 边界条件质检
-            st.write("🥷 Agent B (资深 QA) 正在进行边界条件与异常流压测...")
+            st.write("🛡️ Agent B (资深 QA) 正在进行边界条件与异常流压测...")
             resp_b = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "system", "content": "你是一个严苛的QA工程师。请阅读前置PRD，补充一节完整的【异常流与边界条件分析】（网络、并发、极限值等），直接输出Markdown正文，无需客套。"},
                           {"role": "user", "content": base_prd}]
             )
-            st.session_state.final_prd = base_prd + "\n\n" + resp_b.choices[0].message.content
+            final_full_prd = base_prd + "\n\n### 异常流与边界条件分析\n" + resp_b.choices[0].message.content
             
-            # Agent C: 流程图生成
             st.write("🎨 Agent C (架构画师) 正在生成 Mermaid 业务逻辑图...")
             resp_c = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "system", "content": "你是一个架构师。请根据PRD逻辑，输出一段合法的 Mermaid 流程图代码 (graph TD)。只输出代码，不要任何多余文字。"},
-                          {"role": "user", "content": st.session_state.final_prd}]
+                          {"role": "user", "content": final_full_prd}]
             )
             st.session_state.mermaid_code = extract_mermaid(resp_c.choices[0].message.content)
             
-            # Agent D: LLM-as-a-Judge 打分
             st.write("⚖️ Agent D (评审专家) 正在进行 MECE 闭环打分...")
             resp_d = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "system", "content": "你是产品总监。请从“逻辑闭环率”、“边界覆盖度”、“可执行性”三个维度给下方PRD打分（总分100），并给出简短的雷达点评（不超过100字）。"},
-                          {"role": "user", "content": st.session_state.final_prd}]
+                          {"role": "user", "content": final_full_prd}]
             )
-            st.session_state.eval_report = resp_d.choices[0].message.content
             
-            status.update(label="✅ PRD 交付物生成完毕！", state="complete", expanded=False)
+            st.session_state.final_prd = final_full_prd
+            st.session_state.eval_report = resp_d.choices[0].message.content
+            status.update(label="🚀 所有 Agent 协作彻底完成！", state="complete", expanded=False)
         st.rerun()
             
-    # 展示流程图
+    # 展示渲染成果
     if st.session_state.mermaid_code:
         st.markdown("#### 🗺️ 核心业务流程图 (自动渲染)")
         with st.container(border=True):
             render_mermaid(st.session_state.mermaid_code)
             
-    # 展示文字 PRD
     st.markdown("#### 📄 最终产品需求文档 (PRD)")
     with st.container(border=True):
         st.markdown(st.session_state.final_prd)
@@ -244,12 +282,11 @@ elif st.session_state.stage == "FINAL":
     st.download_button(
         label="📥 下载 Markdown 格式文档", 
         data=st.session_state.final_prd, 
-        file_name="AI_PRD_Output.md",
+        file_name="Multi_Agent_PRD.md",
         mime="text/markdown"
     )
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # 展示 AI 质量评估报告
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("📊 LLM-as-a-Judge: AI 质量评估报告", expanded=False):
         st.markdown(st.session_state.eval_report)
