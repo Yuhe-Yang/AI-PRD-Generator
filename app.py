@@ -14,7 +14,7 @@ PROVIDERS = {
 
 # ── 初始化 Session State ──────────────────────────────────────────────────────
 if 'stage' not in st.session_state:
-    st.session_state.stage = "IDEATION" # IDEATION, REVIEW, FINAL
+    st.session_state.stage = "IDEATION" # 阶段分为: IDEATION, REVIEW, FINAL
 if 'blueprint' not in st.session_state:
     st.session_state.blueprint = ""
 if 'final_prd' not in st.session_state:
@@ -22,7 +22,7 @@ if 'final_prd' not in st.session_state:
 if 'user_idea' not in st.session_state:
     st.session_state.user_idea = ""
 
-# ── 极简美学 CSS (Vercel/Linear 风格) ─────────────────────────────────────────
+# ── 极简美学 CSS (Vercel/Linear 风格，完美适配亮/暗模式) ──────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700&display=swap');
@@ -97,19 +97,30 @@ with st.sidebar:
 st.markdown('<div class="hero-title">AI-PM Workflow</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">Human-in-the-loop PRD Generator</div>', unsafe_allow_html=True)
 
-# 动态进度条 (视觉化)
+# 动态进度条 (已修复 Bug 的版本)
 stages = {"IDEATION": 1, "REVIEW": 2, "FINAL": 3}
 current_step = stages[st.session_state.stage]
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.info("🟢 **Step 1: 需求原点 (Ideation)**") if current_step == 1 else st.markdown("✅ Step 1: 需求原点")
+    if current_step == 1:
+        st.info("🟢 **Step 1: 需求原点 (Ideation)**")
+    else:
+        st.markdown("✅ Step 1: 需求原点")
+        
 with col2:
-    if current_step == 2: st.info("🟢 **Step 2: 架构审阅 (Review)**")
-    elif current_step > 2: st.markdown("✅ Step 2: 架构审阅")
-    else: st.markdown("⚪ Step 2: 架构审阅")
+    if current_step == 2: 
+        st.info("🟢 **Step 2: 架构审阅 (Review)**")
+    elif current_step > 2: 
+        st.markdown("✅ Step 2: 架构审阅")
+    else: 
+        st.markdown("⚪ Step 2: 架构审阅")
+        
 with col3:
-    st.info("🟢 **Step 3: 最终交付 (Final PRD)**") if current_step == 3 else st.markdown("⚪ Step 3: 最终交付")
+    if current_step == 3:
+        st.info("🟢 **Step 3: 最终交付 (Final PRD)**")
+    else:
+        st.markdown("⚪ Step 3: 最终交付")
 
 st.markdown("---")
 
@@ -123,7 +134,6 @@ def get_client():
 
 # 【阶段 1：需求原点】
 if st.session_state.stage == "IDEATION":
-    # 彻底解决白框：使用原生 border 容器
     with st.container(border=True):
         st.markdown("#### 💡 输入你的产品灵感")
         idea = st.text_area(
