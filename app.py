@@ -9,11 +9,11 @@ st.set_page_config(page_title="AI-PM 工作流", page_icon="⚡", layout="wide")
 # ── 服务商配置 ────────────────────────────────────────────────────────────────
 PROVIDERS = {
     "DeepSeek (推荐)":       {"base_url": "https://api.deepseek.com/v1",                             "model": "deepseek-chat"},
-    "Claude 3.5 Sonnet (OpenRouter)":   {"base_url": "https://openrouter.ai/api/v1",                           "model": "anthropic/claude-3.5-sonnet"},
+    "Claude 3.5 Sonnet (OpenRouter)":   {"base_url": "https://openrouter.ai/api/v1",                            "model": "anthropic/claude-3.5-sonnet"},
     "Gemini 1.5 Pro (Google)":          {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/","model": "gemini-1.5-pro"},
     "Qwen Max (通义千问)":               {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",      "model": "qwen-max"},
-    "Kimi (月之暗面)":                   {"base_url": "https://api.moonshot.cn/v1",                             "model": "moonshot-v1-8k"},
-    "OpenAI GPT-5.3":                    {"base_url": "https://api.openai.com/v1",                              "model": "gpt-5.3"},
+    "Kimi (月之暗面)":                   {"base_url": "https://api.moonshot.cn/v1",                              "model": "moonshot-v1-8k"},
+    "OpenAI GPT-5.3":                    {"base_url": "https://api.openai.com/v1",                               "model": "gpt-5.3"},
     "GLM-4 (智谱 AI)":                  {"base_url": "https://open.bigmodel.cn/api/paas/v4/",                  "model": "glm-4"},
 }
 
@@ -32,8 +32,8 @@ INDUSTRIES = [
 ]
 
 DEPTH_CONFIG = {
-    "⚡ 闪电版":  {"agents": ["A", "B"],                    "label": "~1 min", "desc": "主文档 + QA 异常流"},
-    "📋 标准版":  {"agents": ["A", "B", "C", "D"],          "label": "~2 min", "desc": "+ 架构图 + 质量评估"},
+    "⚡ 闪电版":  {"agents": ["A", "B"],                     "label": "~1 min", "desc": "主文档 + QA 异常流"},
+    "📋 标准版":  {"agents": ["A", "B", "C", "D"],           "label": "~2 min", "desc": "+ 架构图 + 质量评估"},
     "🔬 深度版":  {"agents": ["A", "B", "C", "D", "E", "F"],"label": "~4 min", "desc": "+ 竞品分析 + 商业化路径"},
 }
 
@@ -264,8 +264,15 @@ if st.session_state.stage == "IDEATION":
 
     with left:
         st.subheader("💡 输入产品灵感")
+        
+        # 【核心修复】：在渲染 text_area 之前拦截 _prefill 状态并作为 value 传入
+        default_idea = ""
+        if "_prefill" in st.session_state:
+            default_idea = st.session_state.pop("_prefill")
+
         idea = st.text_area(
             "描述你的产品想法", height=150,
+            value=default_idea,
             placeholder="例如：打工人经常忘记会议 Action Item，想做一个自动提取会议纪要并推送到飞书的 AI 机器人...",
         )
 
@@ -281,9 +288,6 @@ if st.session_state.stage == "IDEATION":
                 if st.button(ex, key=f"ex_{ex}", use_container_width=True):
                     st.session_state._prefill = ex
                     st.rerun()
-
-        if "_prefill" in st.session_state:
-            idea = st.session_state.pop("_prefill")
 
         if st.button("⚡ 拆解需求架构 →", type="primary", use_container_width=True):
             if not idea or not idea.strip():
