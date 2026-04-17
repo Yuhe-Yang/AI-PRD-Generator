@@ -9,12 +9,12 @@ st.set_page_config(page_title="AI-PM 工作流", page_icon="⚡", layout="wide")
 # ── 服务商配置 ────────────────────────────────────────────────────────────────
 PROVIDERS = {
     "DeepSeek (推荐)":       {"base_url": "https://api.deepseek.com/v1",                             "model": "deepseek-chat"},
-    "Claude 3.5 Sonnet (OpenRouter)":   {"base_url": "https://openrouter.ai/api/v1",                            "model": "anthropic/claude-3.5-sonnet"},
-    "Gemini 1.5 Pro (Google)":          {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/","model": "gemini-1.5-pro"},
-    "Qwen Max (通义千问)":               {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",      "model": "qwen-max"},
-    "Kimi (月之暗面)":                   {"base_url": "https://api.moonshot.cn/v1",                              "model": "moonshot-v1-8k"},
-    "OpenAI GPT-5.3":                    {"base_url": "https://api.openai.com/v1",                               "model": "gpt-5.3"},
-    "GLM-4 (智谱 AI)":                  {"base_url": "https://open.bigmodel.cn/api/paas/v4/",                  "model": "glm-4"},
+    "Claude 3.5 Sonnet":    {"base_url": "https://openrouter.ai/api/v1",                            "model": "anthropic/claude-3.5-sonnet"},
+    "Gemini 1.5 Pro":       {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai/","model": "gemini-1.5-pro"},
+    "Qwen Max (通义千问)":    {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",       "model": "qwen-max"},
+    "Kimi (月之暗面)":        {"base_url": "https://api.moonshot.cn/v1",                              "model": "moonshot-v1-8k"},
+    "OpenAI GPT-5.3":       {"base_url": "https://api.openai.com/v1",                               "model": "gpt-5.3"},
+    "GLM-4 (智谱 AI)":      {"base_url": "https://open.bigmodel.cn/api/paas/v4/",                   "model": "glm-4"},
 }
 
 PRODUCT_TYPES = {
@@ -264,30 +264,22 @@ if st.session_state.stage == "IDEATION":
 
     with left:
         st.subheader("💡 输入产品灵感")
-        
-        # 【核心修复】：在渲染 text_area 之前拦截 _prefill 状态并作为 value 传入
-        default_idea = ""
-        if "_prefill" in st.session_state:
-            default_idea = st.session_state.pop("_prefill")
-
         idea = st.text_area(
-            "描述你的产品想法", height=150,
-            value=default_idea,
+            "描述你的产品想法", height=150, label_visibility="collapsed",
             placeholder="例如：打工人经常忘记会议 Action Item，想做一个自动提取会议纪要并推送到飞书的 AI 机器人...",
         )
 
-        st.caption("⚡ 快速示例（点击填入）")
-        examples = [
-            "帮大学生改简历的 AI 小程序",
-            "AI 驱动的 B2B 合同审核 SaaS",
-            "连接独立咨询师与中小企业的双边平台",
-        ]
-        ex_cols = st.columns(3)
-        for col, ex in zip(ex_cols, examples):
-            with col:
-                if st.button(ex, key=f"ex_{ex}", use_container_width=True):
-                    st.session_state._prefill = ex
-                    st.rerun()
+        # 💡 核心修改区：纯文本示例替代了花哨的按钮 
+        st.markdown("""
+        <div style="font-size: 0.85rem; color: gray; margin-top: -5px; margin-bottom: 20px;">
+            <b>⚡ 参考示例：</b>
+            <ul style="margin-top: 4px; margin-bottom: 0;">
+                <li>帮大学生改简历的 AI 小程序</li>
+                <li>AI 驱动的 B2B 合同审核 SaaS</li>
+                <li>连接独立咨询师与中小企业的双边平台</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
         if st.button("⚡ 拆解需求架构 →", type="primary", use_container_width=True):
             if not idea or not idea.strip():
